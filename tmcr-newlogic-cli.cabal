@@ -20,7 +20,7 @@ executable tmcr-newlogic-cli
     main-is:          Main.hs
     other-modules:    Commands
     -- other-extensions:
-    build-depends:    base ^>=4.15.1.0
+    build-depends:    base
                     , optparse-applicative
                     , polysemy
                     , text
