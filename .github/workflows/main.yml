@@ -43,5 +43,5 @@ jobs:
       - name: push to ghcr
         run: |
           docker load < artifacts/result
-          docker tag tmcr-newlogic-cli ghcr.io/Ibot02/tmcr-newlogic-cli
-          docker push ghcr.io/Ibot02/tmcr-newlogic-cli
+          docker tag tmcr-newlogic-cli ghcr.io/ibot02/tmcr-newlogic-cli
+          docker push ghcr.io/ibot02/tmcr-newlogic-cli
