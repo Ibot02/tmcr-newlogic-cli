@@ -42,5 +42,5 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: push to ghcr
         run:
-          docker load -i image.tar
+          docker load < image.tar
           docker push tmcr-newlogic-cli
