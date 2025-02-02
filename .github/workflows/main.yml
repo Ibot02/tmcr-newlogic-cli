@@ -41,6 +41,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: push to ghcr
-        run:
+        run: |
           docker load < image.tar
           docker push tmcr-newlogic-cli
