@@ -1,0 +1,32 @@
+cabal-version:      3.0
+name:               tmcr-newlogic-cli
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            AGPL-3.0-or-later
+license-file:       LICENSE
+author:             Ibot02
+maintainer:         jtp.jtp@gmx.de
+-- copyright:
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable tmcr-newlogic-cli
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    Commands
+    -- other-extensions:
+    build-depends:    base ^>=4.15.1.0
+                    , optparse-applicative
+                    , polysemy
+                    , text
+                    , containers
+                    , haskeline
+                    , lens
+                    , tmcr-newlogic-lib
+    hs-source-dirs:   app
+    default-language: Haskell2010
