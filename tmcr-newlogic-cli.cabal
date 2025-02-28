@@ -27,6 +27,8 @@ executable tmcr-newlogic-cli
                     , containers
                     , haskeline
                     , lens
+                    , mtl
+                    , random
                     , tmcr-newlogic-lib
     hs-source-dirs:   app
     default-language: Haskell2010
