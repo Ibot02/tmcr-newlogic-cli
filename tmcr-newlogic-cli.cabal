@@ -13,7 +13,7 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 common warnings
-    ghc-options: -Wall
+    ghc-options: -Wall -threaded -O2
 
 executable tmcr-newlogic-cli
     import:           warnings
@@ -29,6 +29,11 @@ executable tmcr-newlogic-cli
                     , lens
                     , mtl
                     , random
+                    , stm
+                    , ttrie
+                    , stm-containers
+                    , deferred-folds
+                    , list-t
                     , tmcr-newlogic-lib
     hs-source-dirs:   app
     default-language: Haskell2010
