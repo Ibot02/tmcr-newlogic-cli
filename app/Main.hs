@@ -97,7 +97,7 @@ runApp options = do
   case gameDef of
     (Nothing, err) -> putStrLn (T.unpack err) >> exitFailure
     (Just gameDef, _) -> do
-      success <- runInputT (setComplete (commandCompletion gameDef) defaultSettings) $ do
+      success <- runInputT (setComplete (commandCompletion (GameContext $ getDefinitions gameDef)) defaultSettings) $ do
         interactive <- if (non_interactive options) then return False else if (force_interactive options) then return True else haveTerminalUI
         if interactive then
           liftIO (fromGameDef gameDef (option_debug options)) >>= app options 

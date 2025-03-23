@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TypeApplications #-}
 module Commands (Command(..), GameContext(..), commandCompletion, parseCommand, LogLevel(..)) where
 
 import System.Console.Haskeline
@@ -22,6 +23,8 @@ import System.Random (mkStdGen)
 import Text.Read (readMaybe)
 
 import Data.List (isPrefixOf)
+
+import qualified Data.Map as M
 
 import System.IO (FilePath)
 import Data.Char (isSpace)
@@ -132,20 +135,29 @@ getHelp'' helpText (CmdSpecNumber xs) = fmap (first ("<NUMBER>":)) (getHelp' hel
 getHelp'' helpText (CmdSpecShuffle xs) = fmap (first ("<SHUFFLE>":)) (getHelp' helpText xs)
 getHelp'' helpText (CmdSpecFile xs) = fmap (first ("<FILENAME>":)) (getHelp' helpText xs)
 
-commandCompletion :: (Monad m) => GameDef -> CompletionFunc m
+commandCompletion :: (MonadIO m) => GameContext -> CompletionFunc m
 commandCompletion def = completeWordWithPrev' Nothing isSpace (completeCommands def definedCommands . words . reverse)
 
-completeCommands :: (Monad m) => GameDef -> CommandTree a -> [String] -> String -> m [Completion]
+completeCommands :: (MonadIO m) => GameContext -> CommandTree a -> [String] -> String -> m [Completion]
 completeCommands def commands words part = fmap concat $ forM commands $ \command -> completeCommand def command words part
 
-completeCommand :: (Monad m) => GameDef -> CommandSpec a -> [String] -> String -> m [Completion]
+completeCommand :: (MonadIO m) => GameContext -> CommandSpec a -> [String] -> String -> m [Completion]
 completeCommand def (CmdSpecHelptext _ cmd) words part = completeCommand def cmd words part
-completeCommand def (CmdSpecConstant c cmds) [] part | part `isPrefixOf` c = return [simpleCompletion c]
-                                                     | otherwise = return []
-completeCommand def (CmdSpecLeaf a) _ _ = return []
-completeCommand def (CmdSpecNumber cmds) [] _ = return []
-completeCommand def (CmdSpecNumber cmds) (c:cs) p | otherwise = return []--todo: match number -> complete rest 
---todo
+completeCommand def (CmdSpecConstant c _) [] part | part `isPrefixOf` c = return [simpleCompletion c]
+                                                  | otherwise = return []
+completeCommand def (CmdSpecConstant c cmds) (c':cs) p | c == c' = completeCommands def cmds cs p
+                                                       | otherwise = return []
+completeCommand def (CmdSpecLeaf _) _ _ = return []
+completeCommand def (CmdSpecNumber _) [] _ = return []
+completeCommand def (CmdSpecNumber cmds) (c:cs) p = case readMaybe @Integer c of
+  Nothing -> return []
+  Just _ -> completeCommands def cmds cs p
+completeCommand def (CmdSpecTarget cmds) [] p = return [] --todo
+completeCommand def (CmdSpecTarget cmds) (_:cs) p = completeCommands def cmds cs p
+completeCommand def (CmdSpecShuffle cmds) [] p = return $ def ^.. gameContextDefinitions . definedShuffles . to M.keys . traverse . to T.unpack . filtered (p `isPrefixOf`) . to simpleCompletion
+completeCommand def (CmdSpecShuffle cmds) (_:cs) p = completeCommands def cmds cs p
+completeCommand def (CmdSpecFile cmds) [] p = listFiles p
+completeCommand def (CmdSpecFile cmds) (_:cs) p = completeCommands def cmds cs p
 completeCommand def _ _ _ = return []
 
 type CommandTree a = [CommandSpec a]
