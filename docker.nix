@@ -11,8 +11,8 @@ let
     tmcr-newlogic-lib = pkgs.haskellPackages.callCabal2nix "tmcr-newlogic-lib" (pkgs.fetchFromGitHub {
       owner = "Ibot02";
       repo = "tmcr-newlogic-lib";
-      rev = "f8abe1b3792f9ff38c1c4b0854a31fbb91a9ebe9";
-      sha256 = "s7HZLCTJn/Th+nmnDq3N4DanwI/b6gEVGa6fprZYYc8=";
+      rev = "808ef9607bb2bd3ad6e7ff59bc05dccceacf9103";
+      sha256 = "w0rfQZKu3QmO44KGWfgfa7hEC3Nz2MaWiee2laNwsdg=";
     }) {};
   });
 in pkgs.dockerTools.buildLayeredImage {

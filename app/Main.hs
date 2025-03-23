@@ -25,7 +25,7 @@ import TMCR.Logic.Logic (Scopes (Scopes))
 import Control.Monad (when, replicateM, forM, forM_)
 import System.Console.Haskeline (InputT, defaultSettings, runInputT, outputStrLn, getInputLine, setComplete, haveTerminalUI, mapInputT)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import TMCR.Logic.Descriptor (Descriptor, DescriptorIdent, Oolean, DescriptorType (Truthy, County), SDescriptorType(..))
+import TMCR.Logic.Descriptor (Descriptor, DescriptorIdent, Oolean, DescriptorType (Truthy, County), SDescriptorType(..), DescriptorIdent(..))
 import TMCR.Logic.Common (Thingy, Nteger)
 import TMCR.Shuffler (ShuffleProgress, Consuming, LockIdent, Stateful, ShuffleDependent (LogicNodeDependent), initialShuffleProgress, updateLocal, getDefinitions, defaultEval, Definitions, definedLogicNodes, askAccess)
 import TMCR.Logic.Algebra (LogicValue, OolAble)
@@ -62,7 +62,7 @@ data State = State {
     _stateGameDef :: GameDef
   , _stateOverridesTruthy :: Map (DescriptorIdent 'Truthy, [Thingy]) Oolean
   , _stateOverridesCounty :: Map (DescriptorIdent 'County, [Thingy]) (Nteger, Nteger)
-  , _stateProgress :: TransactionalShuffleProgress (LogicValue (Consuming LockIdent (Stateful (OolAble Bool))) 'Truthy) (LogicValue (Consuming LockIdent (Stateful (OolAble Bool))) 'County)
+  , _stateProgress :: TransactionalShuffleProgress (LogicValue (Consuming LockIdent (OolAble Bool)) 'Truthy) (LogicValue (Consuming LockIdent (OolAble Bool)) 'County)
   , _stateSeed :: RandomSeed
   , _stateLoglevel :: LogLevel
 }
@@ -97,7 +97,7 @@ runApp options = do
   case gameDef of
     (Nothing, err) -> putStrLn (T.unpack err) >> exitFailure
     (Just gameDef, _) -> do
-      success <- runInputT (setComplete (commandCompletion gameDef) defaultSettings) $ do
+      success <- runInputT (setComplete (commandCompletion (GameContext $ getDefinitions gameDef)) defaultSettings) $ do
         interactive <- if (non_interactive options) then return False else if (force_interactive options) then return True else haveTerminalUI
         if interactive then
           liftIO (fromGameDef gameDef (option_debug options)) >>= app options 
@@ -196,7 +196,7 @@ runCommand options cmd = case cmd of
       debug "Accesses"
       accesses <- gets $ view $ stateProgress . tDefinitions . definedLogicNodes . traverse
       currentState <- use stateProgress
-      accesses' <- liftIO $ forM accesses $ \(access, args) -> fmap ((,) (access, args)) $ atomically $ flip runReaderT currentState $ runTReadEval $ askAccess STruthy access args
+      accesses' <- liftIO $ forM accesses $ \(access, args) -> fmap ((,) (access, args)) $ atomically $ flip runReaderT currentState $ runTReadEval $ askAccess (TruthyDescriptorIdent access) args
       traverse (debug . show) $ accesses'
       debug ""
     CmdShowQueue -> do

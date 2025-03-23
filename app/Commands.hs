@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE TypeApplications #-}
 module Commands (Command(..), GameContext(..), commandCompletion, parseCommand, LogLevel(..)) where
 
 import System.Console.Haskeline
@@ -20,10 +22,14 @@ import TMCR.Shuffler (Definitions, definedShuffles)
 import System.Random (mkStdGen)
 import Text.Read (readMaybe)
 
+import Data.List (isPrefixOf)
+
+import qualified Data.Map as M
+
 import System.IO (FilePath)
+import Data.Char (isSpace)
 
 import Control.Lens
-import Control.Lens.TH
 
 import qualified Data.Text as T
 
@@ -32,6 +38,7 @@ data Command = CmdExit
              | CmdStep Integer
              | CmdRun
              | CmdRunLogic
+             | CmdAutoRunLogic
              | CmdRunShuffles
              | CmdQueueShuffles
              | CmdDirtyShuffles
@@ -54,7 +61,7 @@ $(makeLenses ''GameContext)
 parseCommand :: ReaderT GameContext (InputT IO) Command
 parseCommand = do
   i <- fmap words <$> lift (getInputLine "> ")
-  x <- parseCommand' commands CmdExit i
+  x <- parseCommand' definedCommands CmdExit i
   maybe parseCommand return x
 
 parseCommand' :: CommandTree a -> a -> Maybe [String] -> ReaderT GameContext (InputT IO) (Maybe a)
@@ -95,7 +102,7 @@ parseCommand'' (CmdSpecShuffle cs) [] = lift $ Left ["missing <SHUFFLE>"]
 parseCommand'' (CmdSpecShuffle cs) (x:xs) = do
   s <- findShuffle x
   fmap ($ s) $ parseCommands'' cs xs
-parseCommand'' (CmdSpecFile cs) [] = lift $ Left ["missing <FILENAME>"]
+parseCommand'' (CmdSpecFile _) [] = lift $ Left ["missing <FILENAME>"]
 parseCommand'' (CmdSpecFile cs) (x:xs) = do
   fmap ($ x) $ parseCommands'' cs xs
 
@@ -128,8 +135,30 @@ getHelp'' helpText (CmdSpecNumber xs) = fmap (first ("<NUMBER>":)) (getHelp' hel
 getHelp'' helpText (CmdSpecShuffle xs) = fmap (first ("<SHUFFLE>":)) (getHelp' helpText xs)
 getHelp'' helpText (CmdSpecFile xs) = fmap (first ("<FILENAME>":)) (getHelp' helpText xs)
 
-commandCompletion :: (Monad m) => GameDef -> CompletionFunc m
-commandCompletion _ = noCompletion
+commandCompletion :: (MonadIO m) => GameContext -> CompletionFunc m
+commandCompletion def = completeWordWithPrev' Nothing isSpace (completeCommands def definedCommands . words . reverse)
+
+completeCommands :: (MonadIO m) => GameContext -> CommandTree a -> [String] -> String -> m [Completion]
+completeCommands def commands words part = fmap concat $ forM commands $ \command -> completeCommand def command words part
+
+completeCommand :: (MonadIO m) => GameContext -> CommandSpec a -> [String] -> String -> m [Completion]
+completeCommand def (CmdSpecHelptext _ cmd) words part = completeCommand def cmd words part
+completeCommand def (CmdSpecConstant c _) [] part | part `isPrefixOf` c = return [simpleCompletion c]
+                                                  | otherwise = return []
+completeCommand def (CmdSpecConstant c cmds) (c':cs) p | c == c' = completeCommands def cmds cs p
+                                                       | otherwise = return []
+completeCommand def (CmdSpecLeaf _) _ _ = return []
+completeCommand def (CmdSpecNumber _) [] _ = return []
+completeCommand def (CmdSpecNumber cmds) (c:cs) p = case readMaybe @Integer c of
+  Nothing -> return []
+  Just _ -> completeCommands def cmds cs p
+completeCommand def (CmdSpecTarget cmds) [] p = return [] --todo
+completeCommand def (CmdSpecTarget cmds) (_:cs) p = completeCommands def cmds cs p
+completeCommand def (CmdSpecShuffle cmds) [] p = return $ def ^.. gameContextDefinitions . definedShuffles . to M.keys . traverse . to T.unpack . filtered (p `isPrefixOf`) . to simpleCompletion
+completeCommand def (CmdSpecShuffle cmds) (_:cs) p = completeCommands def cmds cs p
+completeCommand def (CmdSpecFile cmds) [] p = listFiles p
+completeCommand def (CmdSpecFile cmds) (_:cs) p = completeCommands def cmds cs p
+completeCommand def _ _ _ = return []
 
 type CommandTree a = [CommandSpec a]
 
@@ -141,16 +170,18 @@ data CommandSpec a =
   | CmdSpecShuffle (CommandTree (ShuffleName -> a))
   | CmdSpecFile (CommandTree (FilePath -> a))
   | CmdSpecHelptext String (CommandSpec a)
+  deriving (Functor)
 
 
-commands :: CommandTree Command
-commands = [ CmdSpecHelptext "exit the program" $ CmdSpecConstant "exit" $ pure $ CmdSpecLeaf CmdExit
+definedCommands :: CommandTree Command
+definedCommands = [ CmdSpecHelptext "exit the program" $ CmdSpecConstant "exit" $ pure $ CmdSpecLeaf CmdExit
            , CmdSpecHelptext "Test whether the given target is reachable" $ CmdSpecConstant "isReachable" [CmdSpecTarget [CmdSpecLeaf CmdIsReachable]]
            , CmdSpecConstant "step" $ [ CmdSpecHelptext "step the shuffler once" $ CmdSpecLeaf (CmdStep 1)
                                       , CmdSpecHelptext "step the shuffler a number of times" $ CmdSpecNumber $ pure $ CmdSpecLeaf CmdStep
                                       ]
            , CmdSpecHelptext "step the shuffler until it is done" $ CmdSpecConstant "run" $ pure $ CmdSpecLeaf CmdRun
            , CmdSpecHelptext "step the shuffler until it is done with logic" $ CmdSpecConstant "runLogic" $ pure $ CmdSpecLeaf CmdRunLogic
+           , CmdSpecHelptext "automatically step the shuffler until it is done with logic" $ CmdSpecConstant "autoRunLogic" $ pure $ CmdSpecLeaf CmdAutoRunLogic
            , CmdSpecHelptext "step the shuffler until it is done with shuffles" $ CmdSpecConstant "runShuffles" $ pure $ CmdSpecLeaf CmdRunShuffles
            , CmdSpecHelptext "queue shuffles based on logic eval" $ CmdSpecConstant "queueShuffles" $ pure $ CmdSpecLeaf CmdQueueShuffles
            , CmdSpecHelptext "queue logic eval assuming all shuffles changed" $ CmdSpecConstant "dirtyShuffles" $ pure $ CmdSpecLeaf CmdDirtyShuffles
@@ -159,10 +190,12 @@ commands = [ CmdSpecHelptext "exit the program" $ CmdSpecConstant "exit" $ pure 
            , CmdSpecHelptext "show statistics about the game definitions" $ CmdSpecConstant "stats" $ pure $ CmdSpecLeaf $ CmdShowStats
            , CmdSpecHelptext "show status of the shuffle" $ CmdSpecConstant "status" $ pure $ CmdSpecLeaf $ CmdShowStatus
            , CmdSpecHelptext "show the current shuffler queue" $ CmdSpecConstant "queue" $ pure $ CmdSpecLeaf $ CmdShowQueue
-           , CmdSpecHelptext "writes a shuffle, to stdout or the given file" $ CmdSpecConstant "dumpShuffle" $ pure $ CmdSpecShuffle [ CmdSpecLeaf $ \shuffle -> CmdWriteShuffle shuffle Nothing
-                             , CmdSpecFile $ pure $ CmdSpecLeaf $ flip CmdWriteShuffle . Just
+           , CmdSpecHelptext "writes a shuffle, to stdout or the given file" $ CmdSpecConstant "dumpShuffle" $ pure $ CmdSpecShuffle $ fmap (flip CmdWriteShuffle) <$>
+                             [ CmdSpecLeaf $ Nothing
+                             , CmdSpecFile $ pure $ CmdSpecLeaf Just
                              ]
-           , CmdSpecHelptext "set the log level" $ CmdSpecConstant "logs" $ [ CmdSpecConstant "debug" $ pure $ CmdSpecLeaf $ CmdSetLogLevel LogLevelDebug
-                                                                            , CmdSpecConstant "error" $ pure $ CmdSpecLeaf $ CmdSetLogLevel LogLevelError
-                                                                            ]
+           , CmdSpecHelptext "set the log level" $ CmdSpecConstant "logs" $ fmap CmdSetLogLevel <$>
+                [ CmdSpecConstant "debug" $ pure $ CmdSpecLeaf $ LogLevelDebug
+                , CmdSpecConstant "error" $ pure $ CmdSpecLeaf $ LogLevelError
+                ]
            ]
